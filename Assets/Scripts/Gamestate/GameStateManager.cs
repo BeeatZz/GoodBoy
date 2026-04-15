@@ -14,13 +14,14 @@ public class GameStateManager : MonoBehaviour
     public GameState Current { get; private set; }
 
     [Header("References")]
-    public CameraManager    cameraManager;
+    public CameraManager cameraManager;
     public PlayerController playerController;
-    public PlayerInput      playerInput;
+    public PlayerInput playerInput;
 
     [Header("Fade")]
-    public Image  fadeImage;
-    public float  fadeDuration = 0.4f;
+    [Tooltip("Fullscreen black Image on a Screen Space Overlay canvas.")]
+    public Image fadeImage;
+    public float fadeDuration = 0.4f;
 
     private string _loadedMinigameScene;
 
@@ -31,80 +32,64 @@ public class GameStateManager : MonoBehaviour
         if (Instance != null && Instance != this) { Destroy(gameObject); return; }
         Instance = this;
 
-        // Make sure the fade image starts fully transparent
         SetFadeAlpha(0f);
     }
 
-    // ── Public API ────────────────────────────────────────────────────────────
+    // ── Public API — minigame transitions ─────────────────────────────────────
 
-    /// <summary>
-    /// Call this from any trigger or interaction in the world to start a minigame.
-    /// onComplete runs after the player returns to the world.
-    /// </summary>
     public void EnterMinigame(string sceneName, Action onComplete = null)
     {
         if (Current != GameState.World) return;
         StartCoroutine(EnterMinigameRoutine(sceneName, onComplete));
     }
 
-    /// <summary>
-    /// Called by MinigameController when the minigame is finished.
-    /// </summary>
     public void ExitMinigame(Action onComplete = null)
     {
         if (Current != GameState.Minigame) return;
         StartCoroutine(ExitMinigameRoutine(onComplete));
     }
 
-    // ── Routines ──────────────────────────────────────────────────────────────
+    // ── Public API — fade (used by CinematicDirector and anything else) ───────
+
+    public IEnumerator FadeIn(float duration) => FadeRoutine(1f, 0f, duration);
+    public IEnumerator FadeOut(float duration) => FadeRoutine(0f, 1f, duration);
+
+    // ── Minigame routines ─────────────────────────────────────────────────────
 
     private IEnumerator EnterMinigameRoutine(string sceneName, Action onComplete)
     {
         SetState(GameState.Transitioning);
 
-        // Fade out
-        yield return StartCoroutine(Fade(0f, 1f));
+        yield return StartCoroutine(FadeRoutine(0f, 1f, fadeDuration));
 
-        // Freeze world
         FreezeWorld();
 
-        // Load minigame scene on top
         yield return SceneManager.LoadSceneAsync(sceneName, LoadSceneMode.Additive);
         _loadedMinigameScene = sceneName;
 
-        // Switch input to minigame map
         SwitchInputMap("Minigame");
-
         SetState(GameState.Minigame);
 
-        // Fade in
-        yield return StartCoroutine(Fade(1f, 0f));
+        yield return StartCoroutine(FadeRoutine(1f, 0f, fadeDuration));
     }
 
     private IEnumerator ExitMinigameRoutine(Action onComplete)
     {
         SetState(GameState.Transitioning);
 
-        // Fade out
-        yield return StartCoroutine(Fade(0f, 1f));
+        yield return StartCoroutine(FadeRoutine(0f, 1f, fadeDuration));
 
-        // Unload minigame — world was never touched so nothing to restore
         if (!string.IsNullOrEmpty(_loadedMinigameScene))
         {
             yield return SceneManager.UnloadSceneAsync(_loadedMinigameScene);
             _loadedMinigameScene = null;
         }
 
-        // Resume world
         ResumeWorld();
-
-        // Switch input back to world map
         SwitchInputMap("World");
-
         SetState(GameState.World);
 
-        // Fade in
-        yield return StartCoroutine(Fade(1f, 0f));
+        yield return StartCoroutine(FadeRoutine(1f, 0f, fadeDuration));
 
         onComplete?.Invoke();
     }
@@ -113,13 +98,13 @@ public class GameStateManager : MonoBehaviour
 
     private void FreezeWorld()
     {
-        if (cameraManager)    cameraManager.enabled    = false;
+        if (cameraManager) cameraManager.enabled = false;
         if (playerController) playerController.enabled = false;
     }
 
     private void ResumeWorld()
     {
-        if (cameraManager)    cameraManager.enabled    = true;
+        if (cameraManager) cameraManager.enabled = true;
         if (playerController) playerController.enabled = true;
     }
 
@@ -132,19 +117,17 @@ public class GameStateManager : MonoBehaviour
 
     // ── Fade ──────────────────────────────────────────────────────────────────
 
-    private IEnumerator Fade(float from, float to)
+    private IEnumerator FadeRoutine(float from, float to, float duration)
     {
         if (fadeImage == null) yield break;
 
         float elapsed = 0f;
-
-        while (elapsed < fadeDuration)
+        while (elapsed < duration)
         {
             elapsed += Time.deltaTime;
-            SetFadeAlpha(Mathf.Lerp(from, to, elapsed / fadeDuration));
+            SetFadeAlpha(Mathf.Lerp(from, to, elapsed / duration));
             yield return null;
         }
-
         SetFadeAlpha(to);
     }
 

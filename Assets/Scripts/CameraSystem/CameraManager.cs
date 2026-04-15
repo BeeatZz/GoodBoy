@@ -5,8 +5,6 @@ using UnityEngine;
 public class CameraManager : MonoBehaviour
 {
     public static CameraManager Instance { get; private set; }
-
-    // Any object in the scene can subscribe to know when the active camera changes
     public static event Action<FixedCamera> OnCameraChanged;
 
     [Header("References")]
@@ -14,11 +12,11 @@ public class CameraManager : MonoBehaviour
     public PlayerController playerController;
 
     [Header("Fallback")]
-    [Tooltip("Active when the player is outside all zones. " +
-             "Create a FixedCamera in your scene and assign it here.")]
     public FixedCamera fallbackCamera;
 
     private readonly List<CameraZone> _activeZones = new();
+
+    // Fixed-camera blend state
     private CameraSnapshot _fromSnapshot;
     private CameraSnapshot _toSnapshot;
     private float _blendT;
@@ -26,14 +24,15 @@ public class CameraManager : MonoBehaviour
     private AnimationCurve _blendCurve;
     private bool _blending;
 
-    // ── Lifecycle ─────────────────────────────────────────────────────────────
+    // Follow mode state
+    private FollowTarget _followTarget;
+    private bool _followMode;
 
     private void Awake()
     {
         if (Instance != null && Instance != this) { Destroy(gameObject); return; }
         Instance = this;
 
-        // Snap to fallback in Awake so it's ready before any CameraZone.Start() fires
         if (fallbackCamera != null)
         {
             var snap = fallbackCamera.GetSnapshot();
@@ -43,28 +42,45 @@ public class CameraManager : MonoBehaviour
         }
     }
 
-    // ── Public API ────────────────────────────────────────────────────────────
-
     public void ActivateZone(CameraZone zone)
     {
-        if (!_activeZones.Contains(zone))
-            _activeZones.Add(zone);
-
+        if (_followMode) return;
+        if (!_activeZones.Contains(zone)) _activeZones.Add(zone);
         ApplyHighestPriority();
     }
 
     public void DeactivateZone(CameraZone zone)
     {
         _activeZones.Remove(zone);
-        ApplyHighestPriority();
+        if (!_followMode) ApplyHighestPriority();
     }
 
-    // ── Internal ──────────────────────────────────────────────────────────────
+    public void BlendToCamera(FixedCamera target)
+    {
+        // If we blend to a fixed camera, we usually want to drop follow mode
+        _followMode = false;
+        BeginBlend(target);
+        NotifyCameraChanged(target);
+    }
+
+    public void EnterFollowMode(FollowTarget target)
+    {
+        Debug.Log($"EnterFollowMode called — target: {(target == null ? "NULL" : target.name)}");
+        _followTarget = target;
+        _followMode = true;
+        _blending = false; // Stop any active blends to jump into follow logic
+    }
+
+    public void ExitFollowMode()
+    {
+        _followMode = false;
+        _followTarget = null;
+        ApplyHighestPriority();
+    }
 
     private void ApplyHighestPriority()
     {
         FixedCamera target;
-
         if (_activeZones.Count == 0)
         {
             if (fallbackCamera == null) return;
@@ -94,7 +110,6 @@ public class CameraManager : MonoBehaviour
             rotation = mainCamera.transform.rotation,
             fieldOfView = mainCamera.fieldOfView
         };
-
         _toSnapshot = target.GetSnapshot();
         _blendDuration = target.blendDuration;
         _blendCurve = target.blendCurve;
@@ -104,10 +119,15 @@ public class CameraManager : MonoBehaviour
 
     private void LateUpdate()
     {
+        if (_followMode)
+        {
+            UpdateFollow();
+            return;
+        }
+
         if (!_blending) return;
 
         _blendT += Time.deltaTime / Mathf.Max(_blendDuration, 0.001f);
-
         if (_blendT >= 1f)
         {
             _blendT = 1f;
@@ -115,9 +135,25 @@ public class CameraManager : MonoBehaviour
         }
 
         float t = _blendCurve.Evaluate(_blendT);
-
         mainCamera.transform.position = Vector3.Lerp(_fromSnapshot.position, _toSnapshot.position, t);
         mainCamera.transform.rotation = Quaternion.Slerp(_fromSnapshot.rotation, _toSnapshot.rotation, t);
         mainCamera.fieldOfView = Mathf.Lerp(_fromSnapshot.fieldOfView, _toSnapshot.fieldOfView, t);
+    }
+
+    private void UpdateFollow()
+    {
+        if (_followTarget == null) return;
+
+        Vector3 desired = _followTarget.DesiredPosition;
+        mainCamera.transform.position = Vector3.Lerp(mainCamera.transform.position, desired, _followTarget.followSmoothing * Time.deltaTime);
+
+        Vector3 dir = _followTarget.LookAtPoint - mainCamera.transform.position;
+        if (dir.sqrMagnitude > 0.001f)
+        {
+            Quaternion targetRot = Quaternion.LookRotation(dir);
+            mainCamera.transform.rotation = Quaternion.Slerp(mainCamera.transform.rotation, targetRot, _followTarget.rotationSmoothing * Time.deltaTime);
+        }
+
+        mainCamera.fieldOfView = Mathf.Lerp(mainCamera.fieldOfView, _followTarget.fieldOfView, _followTarget.fovSmoothing * Time.deltaTime);
     }
 }

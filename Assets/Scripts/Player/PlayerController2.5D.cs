@@ -10,8 +10,6 @@ public class PlayerController : MonoBehaviour
     public float gravity = -20f;
 
     [Header("2.5D Settings")]
-    [Tooltip("Allow movement along the camera's depth axis (into/out of screen). " +
-             "Disable for pure side-scrolling.")]
     public bool allowDepthMovement = false;
 
     [Header("Input Actions")]
@@ -25,15 +23,19 @@ public class PlayerController : MonoBehaviour
     private FixedCamera _activeCamera;
     private Vector3 _velocity;
 
-    // Cached per camera-switch to avoid per-frame recalculation
     private Vector3 _screenRight;
     private Vector3 _screenDepth;
 
-    // ── Lifecycle ─────────────────────────────────────────────────────────────
+    // ── Lifecycle ─────────────────────────────────────────────
 
     private void Awake()
     {
         _cc = GetComponent<CharacterController>();
+
+        // Auto-assign if missing (prevents common errors)
+        if (spriteRenderer == null)
+            spriteRenderer = GetComponentInChildren<SpriteRenderer>();
+
         _screenRight = Vector3.right;
         _screenDepth = Vector3.forward;
     }
@@ -43,6 +45,9 @@ public class PlayerController : MonoBehaviour
         moveAction.Enable();
         jumpAction.Enable();
         jumpAction.performed += OnJump;
+
+        // Subscribe to camera event
+        CameraManager.OnCameraChanged += OnCameraChanged;
     }
 
     private void OnDisable()
@@ -50,17 +55,22 @@ public class PlayerController : MonoBehaviour
         moveAction.Disable();
         jumpAction.Disable();
         jumpAction.performed -= OnJump;
+
+        CameraManager.OnCameraChanged -= OnCameraChanged;
     }
 
-    // Called by CameraManager when the active camera changes
+    // ── Camera change ─────────────────────────────────────────
+
     public void OnCameraChanged(FixedCamera cam)
     {
         _activeCamera = cam;
         CacheScreenAxes();
-        UpdateSpriteFlip(_cc.velocity);
+
+        if (_cc != null)
+            UpdateSpriteFlip(_cc.velocity);
     }
 
-    // ── Input callbacks ───────────────────────────────────────────────────────
+    // ── Input ────────────────────────────────────────────────
 
     private void OnJump(InputAction.CallbackContext ctx)
     {
@@ -68,7 +78,7 @@ public class PlayerController : MonoBehaviour
             _velocity.y = Mathf.Sqrt(jumpHeight * -2f * gravity);
     }
 
-    // ── Update ────────────────────────────────────────────────────────────────
+    // ── Update ───────────────────────────────────────────────
 
     private void Update()
     {
@@ -81,7 +91,6 @@ public class PlayerController : MonoBehaviour
         if (allowDepthMovement)
             move += _screenDepth * (v * moveSpeed);
 
-        // Gravity
         if (_cc.isGrounded)
             _velocity.y = Mathf.Max(_velocity.y, -0.5f);
 
@@ -94,7 +103,7 @@ public class PlayerController : MonoBehaviour
             UpdateSpriteFlip(move);
     }
 
-    // ── Helpers ───────────────────────────────────────────────────────────────
+    // ── Helpers ──────────────────────────────────────────────
 
     private void CacheScreenAxes()
     {
