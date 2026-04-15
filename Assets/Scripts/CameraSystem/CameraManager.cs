@@ -228,7 +228,10 @@ public class CameraManager : MonoBehaviour
 
         mainCamera.fieldOfView = Mathf.Lerp(mainCamera.fieldOfView, _followTarget.fieldOfView, _followTarget.fovSmoothing * Time.deltaTime);
     }
-
+    public void ClearActiveZones()
+    {
+        _activeZones.Clear();
+    }
     private void BeginBlend(FixedCamera target)
     {
         _fromSnapshot = new CameraSnapshot

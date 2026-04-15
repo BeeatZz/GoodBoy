@@ -34,7 +34,7 @@ public class CameraZone : MonoBehaviour
             HandlePlayerEntry();
         }
     }
-
+    
     private void OnTriggerExit(Collider other)
     {
         if (other.CompareTag("Player"))
@@ -43,7 +43,7 @@ public class CameraZone : MonoBehaviour
         }
     }
 
-    private void HandlePlayerEntry()
+    public void HandlePlayerEntry()
     {
         CameraManager.Instance.ActivateZone(this);
 
