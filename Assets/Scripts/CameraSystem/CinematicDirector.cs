@@ -1,42 +1,51 @@
-using System;
+﻿using System;
 using System.Collections;
 using UnityEngine;
+using UnityEngine.Events;
+using TMPro;
 
 [Serializable]
-
 public struct CinematicShot
-
 {
-
-    [Tooltip("The FixedCamera to blend to for this shot.")]
-
+    [Header("Camera Settings")]
+    [Tooltip("The FixedCamera to use for this shot.")]
     public FixedCamera camera;
-
-
-    [Tooltip("How long to hold on this shot before moving to the next one.")]
-
+    [Tooltip("How long to hold on this shot.")]
     public float holdDuration;
+    [Tooltip("If true, the camera tracks the camera transform live (for moving parents).")]
+    public bool trackLive;
 
+    [Header("Transitions & UI")]
+    [Tooltip("If true, the screen fades to black before this shot starts.")]
+    public bool fadeToBlack;
+    [Tooltip("Text to display on screen during this shot.")]
+    public string shotText;
+
+    [Header("Audio & Logic")]
+    [Tooltip("Sound effect to play at the start of this shot.")]
+    public AudioClip shotSound;
+    [Tooltip("Unity Events to trigger when this shot starts.")]
+    public UnityEvent onShotStart;
 }
+
 public class CinematicDirector : MonoBehaviour
 {
     [Header("Shots")]
     public CinematicShot[] shots;
 
     [Header("Ending Configuration")]
-    [Tooltip("If assigned, the camera will stay on this fixed camera after finishing.")]
     public FixedCamera endCamera;
-
-    [Tooltip("If endCamera is null, assign this to follow the player after finishing.")]
     public FollowTarget followTarget;
 
     [Header("References")]
     public CameraManager cameraManager;
     public PlayerController playerController;
+    public AudioSource audioSource;
+    public TextMeshProUGUI subtitleText;
 
     [Header("Settings")]
     public bool fadeInOnStart = true;
-    public float fadeInDuration = 0.5f;
+    public float fadeDuration = 0.5f;
 
     public static event Action OnCinematicComplete;
 
@@ -54,49 +63,78 @@ public class CinematicDirector : MonoBehaviour
             yield break;
         }
 
-        // Snap to first shot
-        if (shots[0].camera != null)
-        {
-            var snap = shots[0].camera.GetSnapshot();
-            cameraManager.mainCamera.transform.SetPositionAndRotation(snap.position, snap.rotation);
-            cameraManager.mainCamera.fieldOfView = snap.fieldOfView;
-        }
+        // Setup the very first shot state
+        SetupShot(shots[0], true);
 
         if (fadeInOnStart)
-            yield return StartCoroutine(GameStateManager.Instance.FadeIn(fadeInDuration));
+            yield return StartCoroutine(GameStateManager.Instance.FadeIn(fadeDuration));
 
         for (int i = 0; i < shots.Length; i++)
         {
-            if (i > 0 && shots[i].camera != null)
-                cameraManager.BlendToCamera(shots[i].camera);
+            var shot = shots[i];
 
-            yield return new WaitForSeconds(shots[i].holdDuration);
+            // Handle mid-sequence fades
+            if (i > 0 && shot.fadeToBlack)
+            {
+                yield return StartCoroutine(GameStateManager.Instance.FadeOut(fadeDuration));
+                SetupShot(shot, true); // Snap/Track while black
+                yield return StartCoroutine(GameStateManager.Instance.FadeIn(fadeDuration));
+            }
+            else if (i > 0)
+            {
+                SetupShot(shot, false); // Blend or Track live
+            }
+
+            // UI and Audio
+            if (subtitleText != null) subtitleText.text = shot.shotText;
+            if (shot.shotSound != null && audioSource != null) audioSource.PlayOneShot(shot.shotSound);
+
+            shot.onShotStart?.Invoke();
+
+            yield return new WaitForSeconds(shot.holdDuration);
+
+            if (subtitleText != null) subtitleText.text = "";
         }
 
         Finish();
     }
 
-    private void Finish()
+    private void SetupShot(CinematicShot shot, bool snapImmediately)
     {
-        Debug.Log("CINEMATIC FINISHED");
+        if (shot.camera == null) return;
 
-        // Logic check: Priority to endCamera, then followTarget, then Zones
-        if (endCamera != null)
+        if (shot.trackLive)
         {
-            cameraManager.BlendToCamera(endCamera);
-        }
-        else if (followTarget != null)
-        {
-            cameraManager.EnterFollowMode(followTarget);
+            cameraManager.TrackLive(shot.camera.transform);
         }
         else
         {
-            cameraManager.ExitFollowMode(); // Reverts to zone/fallback logic
+            if (snapImmediately)
+            {
+                var snap = shot.camera.GetSnapshot();
+                cameraManager.mainCamera.transform.SetPositionAndRotation(snap.position, snap.rotation);
+                cameraManager.mainCamera.fieldOfView = snap.fieldOfView;
+                cameraManager.StopLiveTracking(); // Ensure we aren't stuck in live mode
+            }
+            else
+            {
+                cameraManager.BlendToCamera(shot.camera);
+            }
         }
+    }
 
-        // Always re-enable the player
-        if (playerController)
-            playerController.enabled = true;
+    private void Finish()
+    {
+        cameraManager.StopLiveTracking();
+
+        if (endCamera != null)
+            cameraManager.BlendToCamera(endCamera);
+        else if (followTarget != null)
+            cameraManager.EnterFollowMode(followTarget);
+        else
+            cameraManager.ExitFollowMode();
+
+        if (playerController) playerController.enabled = true;
 
         OnCinematicComplete?.Invoke();
     }
