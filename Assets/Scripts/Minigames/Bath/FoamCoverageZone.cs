@@ -1,71 +1,68 @@
 using System.Collections;
 using UnityEngine;
 
-/// <summary>
-/// Place these as child GameObjects distributed across the dog's body sprite,
-/// excluding the head area. FoamSystem auto-collects them from children.
-/// </summary>
+
 public class FoamCoverageZone : MonoBehaviour
 {
-    [Header("Foam Growth")]
-    public float growDuration = 1.2f;
-    [Tooltip("Maximum world-space scale of the foam spot visual.")]
-    public float maxScale     = 1f;
+    public float scrubRate = 0.4f;
+    public float drainRate = 0.05f;
+    public float maxScale = 1f;
 
-    public bool IsCovered { get; private set; }
+    public float Progress { get; private set; }
+    public bool IsCovered => Progress >= 1f;
 
     private GameObject _foamSpot;
-    private Coroutine  _activeRoutine;
+    private bool _spongeOver;
 
-    // ── Cover ─────────────────────────────────────────────────────────────────
 
-    public void Cover(GameObject prefab, Transform container)
+    public void SetSpongeOver(bool over) => _spongeOver = over;
+
+    public void Initialise(GameObject prefab, Transform container)
     {
-        if (IsCovered) return;
-        IsCovered = true;
-
+        if (_foamSpot != null) return;
         _foamSpot = Instantiate(prefab, transform.position, Quaternion.identity, container);
         _foamSpot.transform.localScale = Vector3.zero;
-
-        if (_activeRoutine != null) StopCoroutine(_activeRoutine);
-        _activeRoutine = StartCoroutine(GrowRoutine());
     }
 
-    // ── Uncover ───────────────────────────────────────────────────────────────
 
-    public void Uncover()
+    public void Uncover(float amount = 1f)
     {
-        if (!IsCovered) return;
-        IsCovered = false;
+        Progress = Mathf.Max(0f, Progress - amount);
+        UpdateVisual();
+    }
 
-        if (_activeRoutine != null) StopCoroutine(_activeRoutine);
 
+    private void Update()
+    {
+        if (_spongeOver)
+            Progress = Mathf.Min(1f, Progress + scrubRate * Time.deltaTime);
+        else if (drainRate > 0f)
+            Progress = Mathf.Max(0f, Progress - drainRate * Time.deltaTime);
+
+        UpdateVisual();
+    }
+
+
+    private void UpdateVisual()
+    {
+        if (_foamSpot == null) return;
+        float scale = Mathf.Lerp(0f, maxScale, Progress);
+        _foamSpot.transform.localScale = Vector3.one * scale;
+    }
+
+
+    public void DestroyFoam()
+    {
+        Progress = 0f;
         if (_foamSpot != null)
-        {
             StartCoroutine(ShrinkAndDestroy(_foamSpot));
-            _foamSpot = null;
-        }
-    }
-
-    // ── Routines ──────────────────────────────────────────────────────────────
-
-    private IEnumerator GrowRoutine()
-    {
-        float elapsed = 0f;
-        while (elapsed < growDuration)
-        {
-            elapsed += Time.deltaTime;
-            float t = Mathf.SmoothStep(0f, 1f, elapsed / growDuration);
-            if (_foamSpot) _foamSpot.transform.localScale = Vector3.one * Mathf.Lerp(0f, maxScale, t);
-            yield return null;
-        }
-        if (_foamSpot) _foamSpot.transform.localScale = Vector3.one * maxScale;
+        _foamSpot = null;
     }
 
     private IEnumerator ShrinkAndDestroy(GameObject spot)
     {
-        float   elapsed    = 0f;
-        float   duration   = 0.3f;
+        float elapsed = 0f;
+        float duration = 0.3f;
         Vector3 startScale = spot.transform.localScale;
 
         while (elapsed < duration)
@@ -78,11 +75,12 @@ public class FoamCoverageZone : MonoBehaviour
         if (spot) Destroy(spot);
     }
 
-    // ── Gizmos ────────────────────────────────────────────────────────────────
 
     private void OnDrawGizmos()
     {
-        Gizmos.color = IsCovered ? Color.blue : new Color(1f, 1f, 1f, 0.3f);
+        Gizmos.color = IsCovered
+            ? Color.blue
+            : Color.Lerp(new Color(1f, 1f, 1f, 0.3f), Color.blue, Progress);
         Gizmos.DrawSphere(transform.position, 0.08f);
     }
 }

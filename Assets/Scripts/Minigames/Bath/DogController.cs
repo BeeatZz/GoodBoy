@@ -6,49 +6,41 @@ public enum DogState { Idle, Jumping, NeedsCalming, Calming }
 
 public class DogController : MonoBehaviour
 {
-    [Header("Sprites")]
     public SpriteRenderer spriteRenderer;
-    public Sprite         dirtySprite;
-    public Sprite         cleanSprite;
+    public Sprite dirtySprite;
+    public Sprite cleanSprite;
 
-    [Header("Bounds — set to match your camera's visible world area")]
     public Vector2 screenMin = new(-4f, -3f);
-    public Vector2 screenMax = new( 4f,  3f);
+    public Vector2 screenMax = new(4f, 3f);
 
-    [Header("Jump Settings (Puppy only)")]
     public float jumpIntervalMin = 4f;
     public float jumpIntervalMax = 8f;
-    public float jumpDuration    = 0.8f;
+    public float jumpDuration = 0.6f; 
     [Range(0f, 1f)]
-    [Tooltip("Fraction of covered foam zones to remove after each jump.")]
-    public float foamDecayOnJump = 0.3f;
+    public float foamDecayOnJump = 0.2f;
 
-    [Header("Calm Cooldown (Puppy only)")]
     public float calmCooldownMin = 2f;
     public float calmCooldownMax = 5f;
 
-    [Header("Calming")]
-    [Tooltip("World-space radius around the center position where dragging the dog triggers calming.")]
     public float calmRadius = 0.8f;
 
     public DogState CurrentState { get; private set; }
 
     private BathDifficulty _difficulty;
-    private Vector3        _centerPosition;
-    private Camera         _cam;
-    private Plane          _dragPlane;
-    private bool           _isDragging;
-    private Vector3        _dragOffset;
-    private Coroutine      _jumpCycleRoutine;
+    private Vector3 _centerPosition;
+    private Camera _cam;
+    private Plane _dragPlane;
+    private bool _isDragging;
+    private Vector3 _dragOffset;
+    private Coroutine _jumpCycleRoutine;
 
-    // ── Initialise ────────────────────────────────────────────────────────────
 
     public void Initialise(BathDifficulty difficulty)
     {
-        _difficulty     = difficulty;
-        _cam            = Camera.main;
+        _difficulty = difficulty;
+        _cam = Camera.main;
         _centerPosition = transform.position;
-        _dragPlane      = new Plane(Vector3.forward, transform.position);
+        _dragPlane = new Plane(Vector3.forward, transform.position);
 
         spriteRenderer.sprite = dirtySprite;
         SetState(DogState.Idle);
@@ -57,15 +49,13 @@ public class DogController : MonoBehaviour
             StartJumpCycle();
     }
 
-    // ── Update ────────────────────────────────────────────────────────────────
 
     private void Update()
     {
-        if (CurrentState == DogState.NeedsCalming)
+        if (CurrentState == DogState.NeedsCalming || CurrentState == DogState.Calming)
             HandleCalmDragging();
     }
 
-    // ── Calm dragging ─────────────────────────────────────────────────────────
 
     private void HandleCalmDragging()
     {
@@ -78,8 +68,7 @@ public class DogController : MonoBehaviour
             if (_dragPlane.Raycast(ray, out float enter))
             {
                 Vector3 hit = ray.GetPoint(enter);
-                // Only start drag if the click lands on the dog (within 1 unit)
-                if (Vector2.Distance(hit, transform.position) < 1f)
+                if (Vector2.Distance(hit, transform.position) < 1.2f)
                 {
                     _isDragging = true;
                     _dragOffset = transform.position - hit;
@@ -92,16 +81,17 @@ public class DogController : MonoBehaviour
             Ray ray = _cam.ScreenPointToRay(mouse.position.ReadValue());
             if (_dragPlane.Raycast(ray, out float enter))
             {
-                Vector3 pos   = ray.GetPoint(enter) + _dragOffset;
-                pos.x         = Mathf.Clamp(pos.x, screenMin.x, screenMax.x);
-                pos.y         = Mathf.Clamp(pos.y, screenMin.y, screenMax.y);
-                pos.z         = transform.position.z;
+                Vector3 pos = ray.GetPoint(enter) + _dragOffset;
+                pos.x = Mathf.Clamp(pos.x, screenMin.x, screenMax.x);
+                pos.y = Mathf.Clamp(pos.y, screenMin.y, screenMax.y);
+                pos.z = transform.position.z;
                 transform.position = pos;
 
-                // Trigger calming when close enough to center
                 float dist = Vector2.Distance(transform.position, _centerPosition);
-                if (dist < calmRadius)
+                if (dist < calmRadius && CurrentState != DogState.Calming)
+                {
                     StartCoroutine(CalmRoutine());
+                }
             }
         }
 
@@ -109,7 +99,6 @@ public class DogController : MonoBehaviour
             _isDragging = false;
     }
 
-    // ── Jump cycle ────────────────────────────────────────────────────────────
 
     private void StartJumpCycle()
     {
@@ -124,76 +113,70 @@ public class DogController : MonoBehaviour
             float wait = UnityEngine.Random.Range(jumpIntervalMin, jumpIntervalMax);
             yield return new WaitForSeconds(wait);
 
-            // Only jump during the soaping phase
-            if (BathMinigame.Instance.CurrentState != BathState.Soaping)
-                yield break;
+            if (BathMinigame.Instance.CurrentState == BathState.Soaping && CurrentState == DogState.Idle)
+            {
+                yield return StartCoroutine(ContinuousJumpRoutine());
+            }
 
-            yield return StartCoroutine(JumpRoutine());
+            yield return null;
         }
     }
 
-    private IEnumerator JumpRoutine()
+    private IEnumerator ContinuousJumpRoutine()
     {
-        SetState(DogState.Jumping);
-
-        Vector3 start = transform.position;
-        Vector3 end   = new Vector3(
-            UnityEngine.Random.Range(screenMin.x, screenMax.x),
-            UnityEngine.Random.Range(screenMin.y, screenMax.y),
-            transform.position.z);
-
-        // Arc control point sits above the midpoint for a natural curve
-        Vector3 mid = (start + end) * 0.5f +
-                       Vector3.up * UnityEngine.Random.Range(1f, 2.5f);
-
-        float elapsed = 0f;
-        while (elapsed < jumpDuration)
-        {
-            elapsed           += Time.deltaTime;
-            transform.position = QuadraticBezier(start, mid, end, elapsed / jumpDuration);
-            yield return null;
-        }
-        transform.position = end;
-
-        // Remove a fraction of foam after landing
-        FoamSystem.Instance.DecayFoam(foamDecayOnJump);
-
         SetState(DogState.NeedsCalming);
+
+        while (CurrentState == DogState.NeedsCalming)
+        {
+            Vector3 start = transform.position;
+            Vector3 end = new Vector3(
+                UnityEngine.Random.Range(screenMin.x, screenMax.x),
+                _centerPosition.y,
+                transform.position.z);
+
+            Vector3 mid = (start + end) * 0.5f + Vector3.up * UnityEngine.Random.Range(1.5f, 3f);
+
+            float elapsed = 0f;
+            while (elapsed < jumpDuration)
+            {
+                if (CurrentState == DogState.Calming) yield break;
+
+                elapsed += Time.deltaTime;
+                transform.position = QuadraticBezier(start, mid, end, elapsed / jumpDuration);
+                yield return null;
+            }
+
+            transform.position = end;
+            FoamSystem.Instance.DecayFoam(foamDecayOnJump);
+
+            yield return new WaitForSeconds(0.2f);
+        }
     }
 
     private IEnumerator CalmRoutine()
     {
-        if (CurrentState == DogState.Calming) yield break;
         SetState(DogState.Calming);
         _isDragging = false;
 
-        // Snap the dog smoothly back to dead center
-        float   elapsed = 0f;
-        Vector3 start   = transform.position;
+        float elapsed = 0f;
+        Vector3 start = transform.position;
         while (elapsed < 0.3f)
         {
-            elapsed           += Time.deltaTime;
+            elapsed += Time.deltaTime;
             transform.position = Vector3.Lerp(start, _centerPosition, elapsed / 0.3f);
             yield return null;
         }
         transform.position = _centerPosition;
+
         SetState(DogState.Idle);
-
-        // Wait a random cooldown before the next jump
-        float cooldown = UnityEngine.Random.Range(calmCooldownMin, calmCooldownMax);
-        yield return new WaitForSeconds(cooldown);
-
-        StartJumpCycle();
     }
 
-    // ── Public helpers ────────────────────────────────────────────────────────
 
     public void SetClean()
     {
         if (cleanSprite) spriteRenderer.sprite = cleanSprite;
     }
 
-    // ── Utility ───────────────────────────────────────────────────────────────
 
     private static Vector3 QuadraticBezier(Vector3 p0, Vector3 p1, Vector3 p2, float t)
     {

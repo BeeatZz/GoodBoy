@@ -2,23 +2,21 @@ using UnityEngine;
 
 public class ShampooSponge : BathTool
 {
-    [Header("Foam Application")]
-    [Tooltip("World-space radius in which foam zones are covered per application tick.")]
     public float foamRadius = 0.4f;
 
-    [Tooltip("Minimum seconds between foam applications while dragging.")]
-    public float applicationRate = 0.05f;
-
-    private float _nextApplicationTime;
-
-    protected override void OnHeld()
+    protected override void Update()
     {
-        if (BathMinigame.Instance.CurrentState != BathState.Soaping) return;
-        if (Time.time < _nextApplicationTime) return;
+        base.Update();
 
-        FoamSystem.Instance.ApplyFoamAtPosition(transform.position, foamRadius);
-        _nextApplicationTime = Time.time + applicationRate;
+
+        if (_isHeld && BathMinigame.Instance.CurrentState == BathState.Soaping)
+            FoamSystem.Instance.UpdateSpongePosition(transform.position, foamRadius);
+        else
+            FoamSystem.Instance.ClearSpongeContact();
     }
+
+
+    protected override void OnHeld() { }
 
     private void OnDrawGizmosSelected()
     {

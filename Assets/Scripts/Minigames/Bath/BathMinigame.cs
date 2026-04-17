@@ -10,24 +10,16 @@ public class BathMinigame : MonoBehaviour
 
     public static event Action<BathState> OnStateChanged;
 
-    [Header("References")]
     public MinigameController minigameController;
     public DogController      dogController;
     public FoamSystem         foamSystem;
     public ShampooSponge      shampooSponge;
     public ShowerHead         showerHead;
-
-    [Header("Settings")]
     public BathDifficulty difficulty = BathDifficulty.Adult;
-
     [Range(0f, 1f)]
-    [Tooltip("Fraction of body zones that must be covered before rinsing unlocks.")]
     public float foamCoverageRequired = 0.9f;
 
     public BathState CurrentState { get; private set; }
-
-    // ── Lifecycle ─────────────────────────────────────────────────────────────
-
     private void Awake()
     {
         if (Instance != null && Instance != this) { Destroy(gameObject); return; }
@@ -42,7 +34,6 @@ public class BathMinigame : MonoBehaviour
 
     private void Update()
     {
-        // Transition to rinsing once coverage threshold is met
         if (CurrentState == BathState.Soaping &&
             foamSystem.CoveragePercent >= foamCoverageRequired)
         {
@@ -50,7 +41,6 @@ public class BathMinigame : MonoBehaviour
         }
     }
 
-    // ── Called by ShowerHead when all foam is cleared ─────────────────────────
 
     public void OnRinsingComplete()
     {
@@ -60,14 +50,12 @@ public class BathMinigame : MonoBehaviour
         minigameController.Complete();
     }
 
-    // ── State machine ─────────────────────────────────────────────────────────
 
     private void SetState(BathState state)
     {
         CurrentState = state;
         OnStateChanged?.Invoke(state);
 
-        // Tools are shown/hidden based on the current phase
         shampooSponge.gameObject.SetActive(state == BathState.Soaping);
         showerHead.gameObject.SetActive(state == BathState.Rinsing);
     }

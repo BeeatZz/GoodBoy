@@ -5,19 +5,11 @@ public class FoamSystem : MonoBehaviour
 {
     public static FoamSystem Instance { get; private set; }
 
-    [Header("Coverage Zones")]
-    [Tooltip("Auto-populated from children if left empty. " +
-             "Place FoamCoverageZone GameObjects across the dog body, " +
-             "but NOT on the head — that is how the head is excluded.")]
     public FoamCoverageZone[] coverageZones;
 
-    [Header("Foam Visuals")]
-    [Tooltip("Prefab for a single foam spot — a sphere or sprite scaled up over time.")]
     public GameObject foamSpotPrefab;
-    [Tooltip("Parent transform to keep foam spots organised in the hierarchy.")]
-    public Transform  foamContainer;
+    public Transform foamContainer;
 
-    // ── Coverage ──────────────────────────────────────────────────────────────
 
     public float CoveragePercent
     {
@@ -31,7 +23,6 @@ public class FoamSystem : MonoBehaviour
         }
     }
 
-    // ── Lifecycle ─────────────────────────────────────────────────────────────
 
     private void Awake()
     {
@@ -40,21 +31,29 @@ public class FoamSystem : MonoBehaviour
 
         if (coverageZones == null || coverageZones.Length == 0)
             coverageZones = GetComponentsInChildren<FoamCoverageZone>();
+
+        foreach (var zone in coverageZones)
+            zone.Initialise(foamSpotPrefab, foamContainer);
     }
 
-    // ── Apply foam (sponge) ───────────────────────────────────────────────────
 
-    public void ApplyFoamAtPosition(Vector3 worldPos, float radius)
+
+    public void UpdateSpongePosition(Vector3 worldPos, float radius)
     {
         foreach (var zone in coverageZones)
         {
-            if (zone.IsCovered) continue;
-            if (Vector3.Distance(zone.transform.position, worldPos) <= radius)
-                zone.Cover(foamSpotPrefab, foamContainer);
+            bool over = Vector3.Distance(zone.transform.position, worldPos) <= radius;
+            zone.SetSpongeOver(over);
         }
     }
 
-    // ── Rinse foam (shower head) ──────────────────────────────────────────────
+
+    public void ClearSpongeContact()
+    {
+        foreach (var zone in coverageZones)
+            zone.SetSpongeOver(false);
+    }
+
 
     public void RinseAtPosition(Vector3 worldPos, float radius)
     {
@@ -62,11 +61,10 @@ public class FoamSystem : MonoBehaviour
         {
             if (!zone.IsCovered) continue;
             if (Vector3.Distance(zone.transform.position, worldPos) <= radius)
-                zone.Uncover();
+                zone.DestroyFoam();
         }
     }
 
-    // ── Decay foam (dog jumps) ────────────────────────────────────────────────
 
     public void DecayFoam(float decayPercent)
     {
@@ -74,16 +72,16 @@ public class FoamSystem : MonoBehaviour
         foreach (var zone in coverageZones)
             if (zone.IsCovered) covered.Add(zone);
 
-        // Fisher-Yates shuffle so removal is random
         for (int i = covered.Count - 1; i > 0; i--)
         {
             int j = UnityEngine.Random.Range(0, i + 1);
             (covered[i], covered[j]) = (covered[j], covered[i]);
         }
 
-        int toRemove = Mathf.RoundToInt(covered.Count * decayPercent);
-        for (int i = 0; i < toRemove; i++)
-            covered[i].Uncover();
+
+        int toDecay = Mathf.RoundToInt(covered.Count * decayPercent);
+        for (int i = 0; i < toDecay; i++)
+            covered[i].Uncover(0.6f);
     }
 
     public bool AllFoamCleared()

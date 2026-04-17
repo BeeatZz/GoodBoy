@@ -1,18 +1,10 @@
 using UnityEngine;
 using UnityEngine.UI;
 
-/// <summary>
-/// Optional UI — shows a progress bar for foam coverage during soaping,
-/// and a rinsing indicator during the rinse phase.
-/// Wire up in the Inspector; nothing breaks if left unassigned.
-/// </summary>
 public class BathCoverageUI : MonoBehaviour
 {
-    [Header("Soaping Phase")]
     public Slider coverageBar;
     public GameObject soapingPrompt;
-
-    [Header("Rinsing Phase")]
     public GameObject rinsingPrompt;
 
     private void OnEnable()  => BathMinigame.OnStateChanged += HandleStateChanged;
