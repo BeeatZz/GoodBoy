@@ -1,22 +1,13 @@
+using System.Diagnostics;
 using UnityEngine;
 
-/// <summary>
-/// Place on any world object to start a minigame when the player interacts with it.
-/// Handles both trigger-based (walk up to) and interaction-based (press button) entry.
-/// </summary>
 public class MinigameTrigger : MonoBehaviour
 {
-    [Header("Minigame")]
-    [Tooltip("The name of the scene to load. Must be added to Build Settings.")]
     public string minigameSceneName;
 
-    [Tooltip("If true the minigame starts automatically when the player enters the trigger. " +
-             "If false, call Interact() manually from your interaction system.")]
-    public bool autoTrigger = false;
+    public bool loadAdditive = true;
 
-    [Header("On Complete")]
-    [Tooltip("Disable this trigger after the minigame is completed once " +
-             "(e.g. a puzzle that only needs solving once).")]
+    public bool autoTrigger = false;
     public bool disableOnComplete = true;
 
     private bool _completed;
@@ -24,31 +15,38 @@ public class MinigameTrigger : MonoBehaviour
     private void OnTriggerEnter(Collider other)
     {
         if (!autoTrigger) return;
-        if (other.CompareTag("Player"))
-            StartMinigame();
+        if (other.CompareTag("Player")) StartMinigame(skipFade: false);
     }
 
-    /// <summary>
-    /// Call this from your interaction system when the player presses the interact button.
-    /// </summary>
-    public void Interact()
-    {
-        StartMinigame();
-    }
+    public void Interact() => StartMinigame(skipFade: false);
 
-    private void StartMinigame()
+
+    public void InteractNoFade() => StartMinigame(skipFade: true);
+
+    private void StartMinigame(bool skipFade)
     {
         if (_completed) return;
         if (string.IsNullOrEmpty(minigameSceneName))
         {
-            Debug.LogWarning($"MinigameTrigger on {gameObject.name} has no scene name set.");
             return;
         }
 
-        GameStateManager.Instance.EnterMinigame(minigameSceneName, onComplete: () =>
+        if (loadAdditive)
         {
-            _completed = true;
-            if (disableOnComplete) gameObject.SetActive(false);
-        });
+            GameStateManager.Instance.EnterMinigame(
+                minigameSceneName,
+                skipFadeOut: skipFade,
+                onComplete: () =>
+                {
+                    _completed = true;
+                    if (disableOnComplete) gameObject.SetActive(false);
+                });
+        }
+        else
+        {
+            GameStateManager.Instance.EnterMinigameStandalone(
+                minigameSceneName,
+                skipFadeOut: skipFade);
+        }
     }
 }

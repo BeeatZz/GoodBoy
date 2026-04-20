@@ -5397,7 +5397,7 @@ MonoBehaviour:
   foamSystem: {fileID: 538227516}
   shampooSponge: {fileID: 1549604925}
   showerHead: {fileID: 484302838}
-  difficulty: 0
+  difficulty: 1
   foamCoverageRequired: 1
 --- !u!4 &1843417642
 Transform:

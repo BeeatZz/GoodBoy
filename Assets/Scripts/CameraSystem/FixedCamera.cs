@@ -2,11 +2,9 @@ using UnityEngine;
 
 public class FixedCamera : MonoBehaviour
 {
-    [Header("Transition")]
     public float blendDuration = 0.4f;
     public AnimationCurve blendCurve = AnimationCurve.EaseInOut(0, 0, 1, 1);
 
-    // Snapshot used by CameraManager
     public CameraSnapshot GetSnapshot() => new CameraSnapshot
     {
         position   = transform.position,
